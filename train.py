@@ -24,12 +24,11 @@ def main():
     to_train = bool(sys.argv[3])
     num_epochs = int(sys.argv[4])
     batch_size = int(sys.argv[5])
-    momentum = float(sys.argv[6])
-    save_name = sys.argv[7]
-    delta = int(sys.argv[8])
-    train_path = sys.argv[9]
-    val_path = sys.argv[10]
-    test_path = sys.argv[11]
+    save_name = sys.argv[6]
+    delta = int(sys.argv[7])
+    train_path = sys.argv[8]
+    val_path = sys.argv[9]
+    test_path = sys.argv[10]
 
     if torch.cuda.is_available():
         device = 'cuda'
@@ -50,7 +49,7 @@ def main():
     model = ConvClassifier(backbone)
     model = model.cuda()
     criterion = nn.BCELoss()
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     train_losses = []
     val_losses = []
     val_accs = []
