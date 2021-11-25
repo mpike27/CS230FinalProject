@@ -42,5 +42,19 @@ class SoccerDataset(Dataset):
         return labels[idx], os.path.join(self.data_path, f"/Data/SoccerNet/Tensors/block_{idx}.pt")
 
         
+class ToyDataset(Dataset):
+    def __init__(self, length, alpha, transform=None):
+        self.length = length
+        self.dist = torch.distributions.Bernoulli(torch.tensor([alpha]))
+        if transform:
+            self.transform = transform
 
-
+    def __len__(self):
+        return self.length 
+    
+    def __getitem__(self, idx):
+        imgs = torch.rand(60, 3, 112, 112) * 255
+        label = self.dist.sample()
+        if self.transform:
+            imgs = self.transform(imgs)
+        return imgs.permute(1, 0, 2, 3), label
