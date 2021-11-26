@@ -1,4 +1,4 @@
-# script.sh
+#!/bin/bash
 export BACKBONE=resnet3d
 export LEARNING_RATE=0.0001
 export TO_TRAIN=TRUE
