@@ -13,6 +13,10 @@ Downsample from 398x224 at 25fps to 112x112 at 25fps
 '''
 
 root_path = '/scratch/users/mpike27/CS230/data/'
+ACTIONS = ['Kick-off', 'Ball out of play', 'Throw-in', 'Corner', 'Shots on target', \
+    'Offside', 'Clearance', 'Goal', 'Foul', 'Indirect free-kick', \
+    'Shots off target', 'Substitution', 'Yellow card', 'Direct free-kick', \
+    'Penalty', 'Red card', 'Yellow then red card', 'None']
 
 ACTION_TO_IND = {
     'Kick-off': 0, 
@@ -35,21 +39,27 @@ ACTION_TO_IND = {
     'None': 17
 }
 
+def timeToBlockNum(time, clip_size):
+    minutes = int(time.split(':')[0])
+    seconds = int(time.split(':')[1])
+    totalSeconds = minutes * 60 + seconds
+    return totalSeconds // clip_size
+
 #create list of goal times in the game from labels
-def create_action_times(game_label):
+def create_action_times(game_label, clip_size):
     actions = {}
     for i in range(len(game_label)):
-        label_dict = game_label[i]
-        label = label_dict['action']
+        label = game_label[i]['label']
         if label in ACTION_TO_IND:
             # ie label_dict["gameTime"] = "1 - 13:10"
-            gameTime = label_dict["gameTime"].split(' ') 
+            gameTime = game_label[i]["gameTime"].split(' ') 
             half = gameTime[0]
             time = gameTime[-1]
             # minute = int(time.split(':')[0])
             # actions.append((half, time))
+            block_num = timeToBlockNum(time, clip_size)
             if half == "1":
-                actions[time] = ACTION_TO_IND[label]
+                actions[block_num] = ACTION_TO_IND[label]
     return actions
 
 def main():
@@ -60,19 +70,22 @@ def main():
     # stage = input("Train, test, or val?:\n")
     # define transform
     clip_size = int(sys.argv[1])
+    #Make sure clip size if even on the minute
+    assert(60 % clip_size == 0)
     transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((112, 112)), transforms.Normalize((0.43216,0.394666, 0.37645), (0.22803, 0.22145, 0.216989))])
     for split in ['train', 'val', 'test']:
-        num_blocks = 0
-        block_num_to_label = {}
+        # num_blocks = 0
+        blocks = []
+        block_num_to_label = []
         data_path = root_path + split + "/SoccerNet/england_epl"
         save_path = root_path + split + "/SoccerNet/Tensors"
         for season in os.listdir(data_path):
             for game in os.listdir(os.path.join(data_path, season)):
-                with open(os.path.join(data_path, season, game, "Labels.json")) as outfile:
+                with open(os.path.join(data_path, season, game, "Labels-v2.json")) as outfile:
                     game_label = json.load(outfile)["annotations"]
                 # create list of all goal times in game
-                action_times = create_action_times(game_label)
-                minute = 0
+                action_times = create_action_times(game_label, clip_size)
+                game_block_num = 0
                 for half in range(1):
                     file_path = os.path.join(data_path, season, game)
                     print(file_path)
@@ -85,7 +98,6 @@ def main():
                     frame_counter = 0
                     num_frames_in_block = 0
                     block = torch.zeros(60, 3, 112, 112)
-                    blocks = []
                     while True:
                         ret, frame = vid.read()
                         if not ret:
@@ -95,27 +107,34 @@ def main():
                             block[num_frames_in_block] = transform(frame)
                             num_frames_in_block += 1
                         if num_frames_in_block == clip_size - 1:
-                            # print(minute)
+                            # breakpoint()
                             # save block
-                            blocks.append(block)
+                            blocks.append(block.unsqueeze(0))
                             # torch.save(block, os.path.join(save_path, f"block_{num_blocks}.pt"))
-                            block_num_to_label[num_blocks] = action_times[minute] if time in action_times else 0
-                            num_blocks += 1
-                            minute += 1
+                            if game_block_num in action_times:
+                                block_num_to_label.append(action_times[game_block_num])
+                            else: 
+                                block_num_to_label.append(ACTION_TO_IND['None'])
+                            # num_blocks += 1
+                            game_block_num += 1
                             num_frames_in_block = 0
-
                         frame_counter += 1
-
+                print(len(blocks))
+                
         if not os.path.exists(save_path):
             os.mkdir(save_path)
         blocks_tensor = torch.Tensor(len(blocks), *(blocks[0].shape))
         torch.cat(blocks, out=blocks_tensor)
+        block_num_to_label = torch.Tensor(block_num_to_label)
         tensor_path = os.path.join(save_path, f"blocks_{clip_size}.pt")
-        print(f"Saving {tensor_path}")
+        labels_path = os.path.join(save_path, f"block_num_to_label_{clip_size}.pt")
+        print(f"Saving {tensor_path} with shape {blocks_tensor.shape}")
         torch.save(blocks_tensor, tensor_path)
-        # Save block_num_to_label map
-        with open(os.path.join(save_path, f"block_num_to_label_{clip_size}.pkl"), 'wb') as fd:
-            pickle.dump(block_num_to_label, fd)
+        print(f"Saving {labels_path} with shape {block_num_to_label.shape}")
+        torch.save(block_num_to_label, labels_path)
+        # # Save block_num_to_label map
+        # with open(os.path.join(save_path, f"block_num_to_label_{clip_size}.pkl"), 'wb') as fd:
+        #     pickle.dump(block_num_to_label, fd)
 
 def convert_to_mp4(mkv_file, mp4_file):
     subprocess.run(["ffmpeg", "-i", mkv_file, "-codec", "copy", mp4_file])

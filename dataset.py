@@ -12,6 +12,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from collections import defaultdict
 import torchvision.transforms
+from torchvision import transforms as T
 
 """
 1. Download 14 videos
@@ -19,33 +20,34 @@ import torchvision.transforms
 3. DataSet (this file)
     - __getitem__(self) - returns one 60s block: output.shape = (3 x 60 (60s clip sampled every second) x 112 x 112)
 """
+
 class SoccerDataset(Dataset):
     
-    def __init__(self, data_path):
+    def __init__(self, data_path, clip_size, transform=None):
         self.data_path = data_path
-        # self.labels_path = data_path
-        self.args = args
-        self.train = train
-        self.labels = json.load(data_path)
+        self.clip_size = clip_size
+        tensor_path = data_path + f"blocks_{clip_size}.pt"
+        self.input = torch.load(tensor_path)
+        label_path = data_path + f"block_num_to_label_{clip_size}.pt"
+        self.labels = torch.load(label_path)
         if not transform:
-            normalize = transforms.Normalize((0.43216,0.394666, 0.37645), (0.22803, 0.22145, 0.216989))
-            self.transform = transforms.Compose([normalize])
+            normalize = T.Normalize((0.43216,0.394666, 0.37645), (0.22803, 0.22145, 0.216989))
+            self.transform = T.Compose([normalize])
+        else:
+            self.transform = transform
 
     def __len__(self):
-        return len(self.dataset)
+        return self.input.shape[0]
     
     def __getitem__(self, idx):
-        video_path = os.path.join(self.data_path, "/Data/SoccerNet/england_epl")
-        save_path = os.path.join(self.data_path, "/Data/SoccerNet/Tensors")
-        with open(os.path.join(save_path, "block_num_to_label.pkl"), "rb") as fd:
-            labels = pickle.load(fd)
-        return labels[idx], os.path.join(self.data_path, f"/Data/SoccerNet/Tensors/block_{idx}.pt")
+        return self.transform(self.input[idx]).permute(1, 0, 2, 3), self.labels[idx]
 
         
 class ToyDataset(Dataset):
-    def __init__(self, length, alpha, transform=None):
+    def __init__(self, length, num_classes, transform=None):
         self.length = length
-        self.dist = torch.distributions.Bernoulli(torch.tensor([alpha]))
+        self.num_classes = num_classes
+        # self.dist = torch.distributions.Bernoulli(torch.tensor([alpha]))
         if transform:
             self.transform = transform
 
@@ -54,7 +56,7 @@ class ToyDataset(Dataset):
     
     def __getitem__(self, idx):
         imgs = torch.rand(60, 3, 112, 112) * 255
-        label = self.dist.sample()
+        label = int(torch.randint(self.num_classes, (1,)))
         if self.transform:
             imgs = self.transform(imgs)
-        return imgs.permute(1, 0, 2, 3), label
+        return imgs.permute(1, 0, 2, 3), 7
